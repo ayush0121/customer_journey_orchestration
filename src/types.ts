@@ -48,8 +48,6 @@ export interface AppState {
     budgets: Budget[];
     chatHistory: ChatMessage[];
     isLoading: boolean;
-    apiKey: string;
-    apiEndpoint: string;
     closingBalance?: number;
     anomalies: Anomaly[];
 
@@ -59,17 +57,17 @@ export interface AppState {
     setTransactions: (transactions: Transaction[]) => void;
     addGoal: (goal: Goal) => void;
     updateGoal: (id: string, updates: Partial<Goal>) => void;
+    removeGoal: (id: string) => void;
     setBudgets: (budgets: Budget[]) => void;
     addBudget: (budget: Budget) => void;
     moveBudget: (fromCategory: string, toCategory: string, amount: number) => void;
     addChatMessage: (message: ChatMessage) => void;
     clearChat: () => void;
-    setApiKey: (key: string) => void;
-    setApiEndpoint: (endpoint: string) => void;
     setClosingBalance: (balance: number) => void;
     fetchTransactions: () => Promise<void>;
     fetchGoals: () => Promise<void>;
     fetchAnomalies: () => Promise<void>;
+    clearData: () => Promise<void>;
 }
 
 export interface FinancialInsight {

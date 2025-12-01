@@ -1,0 +1,16 @@
+Starting Classification Test...
+Description: 'Uber * Trip' | Predicted: Transportation | Expected: Transportation
+Description: 'Walmart Store' | Predicted: Groceries | Expected: Groceries
+Description: 'Netflix Subscription' | Predicted: Streaming Services | Expected: Streaming Services
+Description: 'Salary Deposit' | Predicted: Income | Expected: Income
+Description: 'Starbucks Coffee' | Predicted: Dining | Expected: Dining
+Description: 'CVS Pharmacy' | Predicted: Healthcare | Expected: Healthcare
+Description: 'Coursera' | Predicted: Education | Expected: Education
+Description: 'Planet Fitness' | Predicted: Fitness & Wellness | Expected: Fitness & Wellness
+Description: 'Spotify' | Predicted: Music Services | Expected: Music Services
+Description: 'Whole Foods Market' | Predicted: Groceries | Expected: Groceries
+Description: 'Unknown Merchant XYZ' | Predicted: Miscellaneous | Expected: Miscellaneous
+
+Accuracy: 11/11 (100.0%)
+Total Time: 0.26s
+Average Time per Item: 0.0237s

@@ -1,73 +1,90 @@
-# React + TypeScript + Vite
+# Personal Finance Dashboard with AI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This project is a comprehensive personal finance dashboard featuring AI-powered insights, anomaly detection, forecasting, and agentic budget reallocation.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Node.js**: Install from [nodejs.org](https://nodejs.org/) (v18+ recommended).
+- **Python**: Install from [python.org](https://www.python.org/) (v3.9+ recommended).
+- **Git**: Install from [git-scm.com](https://git-scm.com/).
 
-## React Compiler
+## Setup Instructions
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Follow these steps to set up the project on a new machine.
 
-## Expanding the ESLint configuration
+### 1. Clone the Repository
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Open your terminal (Command Prompt, PowerShell, or Terminal) and run:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+git clone https://github.com/ayush0121/customer_journey_orchestration.git
+cd customer_journey_orchestration
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Setup Backend
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Navigate to the backend directory and set up the Python environment:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd backend
+
+# Create a virtual environment
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+# source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
+
+### 3. Setup Frontend
+
+Open a **new** terminal window (keep the backend terminal open), navigate to the project root, and install Node.js dependencies:
+
+```bash
+# Make sure you are in the root directory (customer_journey_orchestration)
+npm install
+```
+
+## Running the Application
+
+You need to run both the backend and frontend servers simultaneously.
+
+### 1. Start Backend Server
+
+In your **Backend Terminal** (where `venv` is active):
+
+```bash
+# Ensure you are in the 'backend' folder
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+*The backend will start at `http://localhost:8000`.*
+
+### 2. Start Frontend Server
+
+In your **Frontend Terminal**:
+
+```bash
+# Ensure you are in the root folder
+npm run dev
+```
+*The frontend will start at `http://localhost:5173` (or similar).*
+
+## First Time Usage
+
+1.  Open the frontend URL in your browser.
+2.  Go to the **Data Ingestion** tab.
+3.  Enter your **OpenAI API Key** and **Endpoint**.
+    *   *Note:* These are stored locally in your browser. You will need to re-enter them on a new machine.
+4.  Upload a bank statement (PDF/CSV) or click **"Load Sample Data"** to get started.
+
+## Features
+
+- **Dashboard**: Overview of spending, budgets, and AI insights.
+- **Data Ingestion**: Upload statements and auto-categorize transactions.
+- **Financial Goals**: Set goals, track progress, and simulate "What-If" scenarios.
+- **Chat Assistant**: Ask questions like "How much did I spend on dining?" or "Move $50 to savings".

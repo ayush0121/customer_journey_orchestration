@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, CheckCircle, ArrowRight, Loader2, Key } from 'lucide-react';
+import { Upload, FileText, CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { RAW_SAMPLE_DATA } from '../utils/mockData';
 import { cleanTransactions } from '../utils/aiLogic';
@@ -11,9 +11,10 @@ interface DataIngestionProps {
 }
 
 export const DataIngestion: React.FC<DataIngestionProps> = ({ onNavigate }) => {
-    const { addTransactions, transactions, apiKey, setApiKey, apiEndpoint, setApiEndpoint } = useStore();
+    const { addTransactions, transactions, setTransactions } = useStore();
     const [isDragging, setIsDragging] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [processingStatus, setProcessingStatus] = useState<string>('');
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -26,95 +27,111 @@ export const DataIngestion: React.FC<DataIngestionProps> = ({ onNavigate }) => {
         setIsDragging(false);
     };
 
-    const processFile = async (file: File) => {
-        if (file.type !== 'application/pdf' && file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-            alert('Please upload a PDF or CSV file.');
-            return;
-        }
-
-        if (!apiKey.startsWith('sk-') && !apiEndpoint.includes('localhost')) {
-            // Basic validation, strict only if using standard OpenAI
-            if (!apiKey) {
-                alert('Please enter a valid API Key.');
-                return;
-            }
-        }
-
+    const processFiles = async (files: FileList | File[]) => {
         setIsProcessing(true);
         setUploadStatus('idle');
+        let successCount = 0;
+        let errorCount = 0;
 
-        try {
-            let textLines: string[] = [];
+        const fileArray = Array.from(files);
 
-            // 1. Extract text
-            if (file.type === 'application/pdf') {
-                textLines = await extractTextFromPDF(file);
-            } else {
-                // Handle CSV/Text
-                const text = await file.text();
-                textLines = text.split('\n').filter(line => line.trim().length > 0);
+        for (let i = 0; i < fileArray.length; i++) {
+            const file = fileArray[i];
+            console.log(`Processing file: ${file.name}, type: ${file.type}`);
+            setProcessingStatus(`Processing file ${i + 1} of ${fileArray.length}: ${file.name}`);
+
+            if (file.type !== 'application/pdf' && file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                console.warn(`Skipping invalid file: ${file.name}`);
+                errorCount++;
+                continue;
             }
 
-            // 2. Send to backend for analysis
-            const response = await fetch('http://localhost:8000/analyze', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    text: textLines,
-                    api_key: apiKey,
-                    api_endpoint: apiEndpoint
-                }),
-            });
+            try {
+                let textLines: string[] = [];
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Failed to analyze statement');
-            }
-
-            const data = await response.json();
-
-            if (data.transactions && Array.isArray(data.transactions)) {
-                // Add IDs if missing (backend might not generate them)
-                const transactionsWithIds = data.transactions.map((t: any, index: number) => ({
-                    ...t,
-                    id: t.id || `ai_${Date.now()}_${index}`,
-                    amount: Number(t.amount) // Ensure number
-                }));
-                addTransactions(transactionsWithIds);
-
-                // Persist to backend
-                try {
-                    await fetch('http://localhost:8000/transactions', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(transactionsWithIds)
-                    });
-                } catch (err) {
-                    console.error("Failed to persist transactions", err);
-                    // Don't block UI success on persistence failure for now, or maybe show warning
+                // 1. Extract text
+                if (file.type === 'application/pdf') {
+                    console.log('Starting PDF extraction...');
+                    textLines = await extractTextFromPDF(file);
+                    console.log(`PDF extracted, lines: ${textLines.length}`);
+                } else {
+                    // Handle CSV/Text
+                    const text = await file.text();
+                    textLines = text.split('\n').filter(line => line.trim().length > 0);
+                    console.log(`CSV/Text extracted, lines: ${textLines.length}`);
                 }
 
-                if (data.closing_balance !== undefined) {
-                    useStore.getState().setClosingBalance(data.closing_balance);
+                // 2. Send to backend for analysis
+                console.log('Sending request to backend...');
+                const response = await fetch('http://localhost:8000/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: textLines
+                    }),
+                });
+                console.log(`Backend response status: ${response.status}`);
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('Backend error:', errorData);
+                    throw new Error(errorData.detail || 'Failed to analyze statement');
                 }
 
-                setUploadStatus('success');
-                // Auto-navigate to dashboard after short delay
-                setTimeout(() => {
-                    onNavigate('dashboard');
-                }, 1500);
-            } else {
-                throw new Error('Invalid response format from backend');
-            }
+                const data = await response.json();
+                console.log('Backend data received:', data);
 
-        } catch (error) {
-            console.error('Error processing file:', error);
+                if (data.transactions && Array.isArray(data.transactions)) {
+                    // Add IDs if missing (backend might not generate them)
+                    const transactionsWithIds = data.transactions.map((t: any, index: number) => ({
+                        ...t,
+                        id: t.id || `ai_${Date.now()}_${i}_${index}`,
+                        amount: Number(t.amount) // Ensure number
+                    }));
+                    addTransactions(transactionsWithIds);
+
+                    // Persist to backend
+                    try {
+                        await fetch('http://localhost:8000/transactions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(transactionsWithIds)
+                        });
+                        // Force re-fetch to ensure sync
+                        await useStore.getState().fetchTransactions();
+                    } catch (err) {
+                        console.error("Failed to persist transactions", err);
+                    }
+
+                    if (data.closing_balance !== undefined) {
+                        useStore.getState().setClosingBalance(data.closing_balance);
+                    }
+                    successCount++;
+                } else {
+                    console.error('Invalid data format:', data);
+                    throw new Error('Invalid response format from backend');
+                }
+
+            } catch (error) {
+                console.error(`Error processing file ${file.name}:`, error);
+                errorCount++;
+                // Continue to next file
+            }
+        }
+
+        setIsProcessing(false);
+        setProcessingStatus('');
+
+        if (successCount > 0) {
+            setUploadStatus('success');
+            setTimeout(() => {
+                onNavigate('dashboard');
+            }, 2000);
+        } else if (errorCount > 0) {
             setUploadStatus('error');
-            alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        } finally {
-            setIsProcessing(false);
+            alert(`Failed to process files. Check console for details.`);
         }
     };
 
@@ -122,14 +139,29 @@ export const DataIngestion: React.FC<DataIngestionProps> = ({ onNavigate }) => {
         e.preventDefault();
         setIsDragging(false);
 
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            processFile(e.dataTransfer.files[0]);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            processFiles(e.dataTransfer.files);
         }
     };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            processFile(e.target.files[0]);
+        if (e.target.files && e.target.files.length > 0) {
+            processFiles(e.target.files);
+        }
+    };
+
+    const handleClearData = async () => {
+        if (confirm('Are you sure you want to clear all uploaded data? This cannot be undone.')) {
+            try {
+                await fetch('http://localhost:8000/transactions', {
+                    method: 'DELETE',
+                });
+                setTransactions([]);
+                setUploadStatus('idle');
+            } catch (error) {
+                console.error("Failed to clear backend data", error);
+                alert("Failed to clear data from server.");
+            }
         }
     };
 
@@ -151,47 +183,21 @@ export const DataIngestion: React.FC<DataIngestionProps> = ({ onNavigate }) => {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div>
-                <h2 className="text-3xl font-bold tracking-tight">Data Ingestion</h2>
-                <p className="text-muted-foreground mt-2">
-                    Upload your bank statements to get AI-powered insights.
-                </p>
-            </div>
-
-            {/* API Configuration */}
-            <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-500/10 rounded-lg">
-                        <Key className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <h3 className="font-semibold">AI Configuration</h3>
+            <div className="flex justify-between items-start">
+                <div>
+                    <h2 className="text-3xl font-bold tracking-tight">Data Ingestion</h2>
+                    <p className="text-muted-foreground mt-2">
+                        Upload your bank statements (PDF/CSV) to get AI-powered insights.
+                    </p>
                 </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">API Endpoint</label>
-                        <input
-                            type="text"
-                            value={apiEndpoint}
-                            onChange={(e) => setApiEndpoint(e.target.value)}
-                            placeholder="https://api.openai.com/v1"
-                            className="w-full px-4 py-2 rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">API Key</label>
-                        <input
-                            type="password"
-                            value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                            placeholder="sk-..."
-                            className="w-full px-4 py-2 rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        />
-                    </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                    Credentials are used only for this session and sent directly to the backend.
-                </p>
+                {transactions.length > 0 && (
+                    <button
+                        onClick={handleClearData}
+                        className="px-4 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors"
+                    >
+                        Clear All Data
+                    </button>
+                )}
             </div>
 
             <div className="grid md:grid-cols-2 gap-8">
@@ -213,6 +219,7 @@ export const DataIngestion: React.FC<DataIngestionProps> = ({ onNavigate }) => {
                         ref={fileInputRef}
                         onChange={handleFileSelect}
                         accept=".pdf,.csv"
+                        multiple
                         className="hidden"
                     />
 
@@ -228,8 +235,8 @@ export const DataIngestion: React.FC<DataIngestionProps> = ({ onNavigate }) => {
                     </h3>
                     <p className="text-sm text-muted-foreground mb-6 max-w-xs">
                         {isProcessing
-                            ? 'Extracting and categorizing transactions with AI...'
-                            : 'Drag and drop your PDF or CSV files here, or click to browse.'}
+                            ? processingStatus || 'Extracting and categorizing transactions...'
+                            : 'Drag and drop your PDF or CSV files here, or click to browse. You can upload multiple files.'}
                     </p>
                     <button
                         disabled={isProcessing}
@@ -266,6 +273,18 @@ export const DataIngestion: React.FC<DataIngestionProps> = ({ onNavigate }) => {
                             </>
                         )}
                     </button>
+
+                    <button
+                        onClick={() => {
+                            if (window.confirm("Are you sure you want to clear all data? This cannot be undone.")) {
+                                useStore.getState().clearData();
+                            }
+                        }}
+                        disabled={isProcessing}
+                        className="w-full mt-4 py-3 bg-red-500/10 text-red-600 border border-red-500/20 rounded-lg font-medium hover:bg-red-500/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                    >
+                        Clear All Data
+                    </button>
                 </div>
             </div>
 
@@ -293,7 +312,7 @@ export const DataIngestion: React.FC<DataIngestionProps> = ({ onNavigate }) => {
                                                 t.category === 'Entertainment' ? "bg-purple-100 text-purple-700" :
                                                     "bg-gray-100 text-gray-700"
                                     )}>
-                                        {t.merchant[0]}
+                                        {t.merchant?.[0] || '?'}
                                     </div>
                                     <div>
                                         <p className="font-medium">{t.merchant}</p>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../store/useStore';
-import { Shield, Plane, Laptop, Plus, Sparkles, ArrowUpRight, Target, Calculator, ArrowRight } from 'lucide-react';
+import { Shield, Plane, Laptop, Plus, Sparkles, ArrowUpRight, Target, Calculator, ArrowRight, Trash2 } from 'lucide-react';
 
 const iconMap: Record<string, React.ReactNode> = {
     'Shield': <Shield className="w-6 h-6" />,
@@ -9,14 +9,14 @@ const iconMap: Record<string, React.ReactNode> = {
 };
 
 export const GoalSection: React.FC = () => {
-    const { goals, addGoal, transactions, apiKey, apiEndpoint } = useStore();
+    const { goals, addGoal, removeGoal, transactions } = useStore();
     const [isCreating, setIsCreating] = React.useState(false);
-    const [newGoal, setNewGoal] = React.useState({
+    const [newGoals, setNewGoals] = React.useState([{
         name: '',
         targetAmount: '',
         deadline: '',
         icon: 'Target'
-    });
+    }]);
     const [insight, setInsight] = React.useState<{ insight_text: string; metric_value: string; impacted_goal: string } | null>(null);
     const [loadingInsight, setLoadingInsight] = React.useState(false);
 
@@ -38,44 +38,75 @@ export const GoalSection: React.FC = () => {
         return (target - current) / months;
     };
 
-    const handleAddGoal = (e: React.FormEvent) => {
+    const handleAddGoals = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newGoal.name || !newGoal.targetAmount || !newGoal.deadline) return;
 
-        const goalData = {
-            id: Date.now().toString(),
-            name: newGoal.name,
-            targetAmount: Number(newGoal.targetAmount),
-            currentAmount: 0,
-            deadline: newGoal.deadline,
-            icon: newGoal.icon
-        };
+        const validGoals = newGoals.filter(g => g.name && g.targetAmount && g.deadline);
+        if (validGoals.length === 0) return;
 
-        addGoal(goalData);
+        const goalsPayload = validGoals.map(g => ({
+            name: g.name,
+            target_amount: Number(g.targetAmount),
+            current_amount: 0,
+            deadline: g.deadline
+        }));
 
-        // Persist to backend
+        // Persist to backend (Bulk)
         try {
-            fetch('http://localhost:8000/goals', {
+            const response = await fetch('http://localhost:8000/goals', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: goalData.name,
-                    target_amount: goalData.targetAmount,
-                    current_amount: goalData.currentAmount,
-                    deadline: goalData.deadline
-                })
+                body: JSON.stringify(goalsPayload)
             });
+
+            if (response.ok) {
+                const savedGoals = await response.json();
+                // Update local store
+                savedGoals.forEach((g: any) => {
+                    addGoal({
+                        id: g.id.toString(),
+                        name: g.name,
+                        targetAmount: g.target_amount,
+                        currentAmount: g.current_amount,
+                        deadline: g.deadline,
+                        icon: 'Target'
+                    });
+                });
+            }
         } catch (err) {
-            console.error("Failed to persist goal", err);
+            console.error("Failed to persist goals", err);
         }
 
         setIsCreating(false);
-        setNewGoal({ name: '', targetAmount: '', deadline: '', icon: 'Target' });
+        setNewGoals([{ name: '', targetAmount: '', deadline: '', icon: 'Target' }]);
+    };
+
+    const handleDeleteGoal = (id: string) => {
+        if (confirm('Are you sure you want to delete this goal?')) {
+            removeGoal(id);
+        }
+    };
+
+    const addNewGoalForm = () => {
+        setNewGoals([...newGoals, { name: '', targetAmount: '', deadline: '', icon: 'Target' }]);
+    };
+
+    const updateGoalForm = (index: number, field: string, value: string) => {
+        const updatedGoals = [...newGoals];
+        updatedGoals[index] = { ...updatedGoals[index], [field]: value };
+        setNewGoals(updatedGoals);
+    };
+
+    const removeGoalForm = (index: number) => {
+        if (newGoals.length > 1) {
+            const updatedGoals = newGoals.filter((_, i) => i !== index);
+            setNewGoals(updatedGoals);
+        }
     };
 
     React.useEffect(() => {
         const fetchInsight = async () => {
-            if (transactions.length === 0 || goals.length === 0 || !apiKey) return;
+            if (transactions.length === 0 || goals.length === 0) return;
 
             setLoadingInsight(true);
             try {
@@ -84,9 +115,7 @@ export const GoalSection: React.FC = () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         transactions,
-                        goals,
-                        api_key: apiKey,
-                        api_endpoint: apiEndpoint
+                        goals
                     })
                 });
                 if (response.ok) {
@@ -101,39 +130,29 @@ export const GoalSection: React.FC = () => {
         };
 
         fetchInsight();
-        fetchInsight();
-    }, [transactions, goals, apiKey, apiEndpoint]);
+    }, [transactions, goals]);
 
-    const handleSimulate = async () => {
-        if (!apiKey) {
-            alert("Please enter your API Key in the Data Ingestion tab first.");
-            return;
-        }
+    const runSimulation = async () => {
         setSimulating(true);
-        console.log("Starting simulation...");
         try {
-            const response = await fetch('http://localhost:8000/what_if', {
+            const response = await fetch('http://localhost:8000/savings-scenario', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     transactions,
                     goals,
-                    extra_savings: extraSavings,
-                    api_key: apiKey,
-                    api_endpoint: apiEndpoint
+                    extra_savings: extraSavings
                 })
             });
-            console.log("Response status:", response.status);
+
             if (response.ok) {
                 const data = await response.json();
-                console.log("Simulation data:", data);
                 setScenario(data);
             } else {
-                const errorText = await response.text();
-                console.error("Simulation failed:", errorText);
+                console.error("Simulation failed:", await response.text());
             }
         } catch (error) {
-            console.error("Simulation error", error);
+            console.error("Simulation error:", error);
         } finally {
             setSimulating(false);
         }
@@ -141,212 +160,257 @@ export const GoalSection: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex items-center justify-between">
+            <div className="flex justify-between items-start">
                 <div>
                     <h2 className="text-3xl font-bold tracking-tight">Financial Goals</h2>
-                    <p className="text-muted-foreground mt-2">Track your progress and plan for the future.</p>
+                    <p className="text-muted-foreground mt-2">
+                        Track your progress and simulate savings scenarios.
+                    </p>
                 </div>
                 <button
-                    onClick={() => setIsCreating(!isCreating)}
+                    onClick={() => setIsCreating(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
                 >
-                    <Plus className="w-4 h-4" />
-                    <span>{isCreating ? 'Cancel' : 'New Goal'}</span>
+                    <Plus className="w-4 h-4" /> Add Goal
                 </button>
             </div>
 
-            {isCreating && (
-                <div className="bg-card border border-border rounded-xl p-6 shadow-sm animate-in slide-in-from-top-2">
-                    <h3 className="text-lg font-semibold mb-4">Create New Goal</h3>
-                    <form onSubmit={handleAddGoal} className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 items-end">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Goal Name</label>
-                            <input
-                                type="text"
-                                value={newGoal.name}
-                                onChange={(e) => setNewGoal({ ...newGoal, name: e.target.value })}
-                                placeholder="e.g. New Car"
-                                className="w-full px-3 py-2 rounded-md border border-input bg-background"
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Target Amount ($)</label>
-                            <input
-                                type="number"
-                                value={newGoal.targetAmount}
-                                onChange={(e) => setNewGoal({ ...newGoal, targetAmount: e.target.value })}
-                                placeholder="5000"
-                                className="w-full px-3 py-2 rounded-md border border-input bg-background"
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Deadline</label>
-                            <input
-                                type="date"
-                                value={newGoal.deadline}
-                                onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
-                                className="w-full px-3 py-2 rounded-md border border-input bg-background"
-                                required
-                            />
-                        </div>
-                        <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
-                            Save Goal
-                        </button>
-                    </form>
+            {/* AI Insight Banner */}
+            {loadingInsight ? (
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 animate-pulse">
+                    <div className="h-4 bg-primary/20 rounded w-1/3 mb-2"></div>
+                    <div className="h-4 bg-primary/10 rounded w-2/3"></div>
                 </div>
-            )}
-
-            {/* AI Insight Tip */}
-            {(insight || loadingInsight) && (
-                <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-xl p-6 flex items-start gap-4">
-                    <div className="p-2 bg-indigo-500/20 rounded-lg shrink-0">
-                        <Sparkles className="w-5 h-5 text-indigo-600" />
+            ) : insight ? (
+                <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-xl p-6 flex items-start gap-4">
+                    <div className="p-3 bg-primary/20 rounded-full shrink-0">
+                        <Sparkles className="w-6 h-6 text-primary" />
                     </div>
                     <div>
-                        <h3 className="font-semibold text-indigo-900 dark:text-indigo-100">
-                            {loadingInsight ? 'Analyzing your finances...' : 'AI Insight'}
-                        </h3>
-                        {loadingInsight ? (
-                            <div className="h-4 w-64 bg-indigo-200/50 dark:bg-indigo-800/50 rounded animate-pulse mt-2" />
-                        ) : (
-                            <p className="text-sm text-indigo-800/80 dark:text-indigo-200/80 mt-1">
-                                {insight?.insight_text}
-                                {insight?.impacted_goal && <span> Helps with <strong>{insight.impacted_goal}</strong>.</span>}
-                            </p>
+                        <h3 className="font-semibold text-lg mb-1">AI Insight</h3>
+                        <p className="text-muted-foreground mb-2">{insight.insight_text}</p>
+                        {insight.impacted_goal !== 'None' && (
+                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-background rounded-full text-xs font-medium border border-border">
+                                <Target className="w-3 h-3 text-primary" />
+                                Impact on: {insight.impacted_goal}
+                            </div>
                         )}
                     </div>
                 </div>
-            )}
+            ) : null}
 
-            {/* What-If Simulator */}
-            <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                    <div className="p-2 bg-blue-500/10 rounded-lg">
-                        <Calculator className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                        <h3 className="font-semibold">What-If Simulator</h3>
-                        <p className="text-xs text-muted-foreground">See how extra savings impact your goals</p>
-                    </div>
-                </div>
+            <div className="grid md:grid-cols-3 gap-6">
+                {goals.map((goal) => {
+                    const monthlyNeeded = calculateMonthlySavings(goal.targetAmount, goal.currentAmount, goal.deadline);
+                    const progress = (goal.currentAmount / goal.targetAmount) * 100;
 
-                <div className="flex flex-col md:flex-row gap-6 items-start">
-                    <div className="w-full md:w-1/3 space-y-4">
-                        <div>
-                            <label className="text-sm font-medium mb-2 block">Extra Monthly Savings: <span className="text-primary font-bold">${extraSavings}</span></label>
-                            <input
-                                type="range"
-                                min="50"
-                                max="2000"
-                                step="50"
-                                value={extraSavings}
-                                onChange={(e) => setExtraSavings(Number(e.target.value))}
-                                className="w-full accent-primary"
-                            />
-                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                                <span>$50</span>
-                                <span>$2000</span>
+                    return (
+                        <div key={goal.id} className="bg-card border border-border rounded-xl p-6 hover:shadow-lg transition-all duration-300 group">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="p-3 bg-muted rounded-xl group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                                    {iconMap[goal.icon] || <Target className="w-6 h-6" />}
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm text-muted-foreground">Target</p>
+                                    <p className="font-bold text-lg">${goal.targetAmount.toLocaleString()}</p>
+                                </div>
+                                <button
+                                    onClick={() => handleDeleteGoal(goal.id)}
+                                    className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
                             </div>
-                        </div>
-                        <button
-                            onClick={handleSimulate}
-                            disabled={simulating}
-                            className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                        >
-                            {simulating ? 'Simulating...' : 'Run Simulation'}
-                        </button>
-                    </div>
 
-                    {scenario && (
-                        <div className="flex-1 bg-muted/30 rounded-lg p-4 animate-in fade-in">
-                            <h4 className="font-semibold text-blue-700 mb-2">Impact Analysis</h4>
-                            <p className="text-sm mb-3">{scenario.impact_description}</p>
-
-                            <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded text-sm text-yellow-800 dark:text-yellow-200">
-                                <strong>💡 Trade-off:</strong> {scenario.trade_off_suggestion}
-                            </div>
+                            <h3 className="font-semibold text-lg mb-1">{goal.name}</h3>
+                            <p className="text-sm text-muted-foreground mb-4">
+                                Save <strong>${monthlyNeeded.toFixed(0)}/mo</strong> to reach by {new Date(goal.deadline).toLocaleDateString()}
+                            </p>
 
                             <div className="space-y-2">
-                                {scenario.new_deadlines.map((nd, idx) => (
-                                    <div key={idx} className="flex justify-between items-center text-sm border-b border-border/50 pb-2 last:border-0">
-                                        <span>{nd.goal_name}</span>
-                                        <div className="flex items-center gap-2 text-green-600 font-medium">
-                                            <span>{nd.months_saved} months sooner</span>
-                                            <ArrowRight className="w-3 h-3" />
-                                            <span>{new Date(nd.new_date).toLocaleDateString()}</span>
-                                        </div>
-                                    </div>
-                                ))}
+                                <div className="flex justify-between text-sm">
+                                    <span>${goal.currentAmount.toLocaleString()} saved</span>
+                                    <span className="font-medium">{progress.toFixed(0)}%</span>
+                                </div>
+                                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-primary transition-all duration-1000 ease-out"
+                                        style={{ width: `${progress}%` }}
+                                    />
+                                </div>
                             </div>
                         </div>
-                    )}
+                    );
+                })}
+            </div>
+
+            {/* What-If Simulator */}
+            <div className="bg-card border border-border rounded-xl p-8 mt-8">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-purple-500/10 rounded-lg">
+                        <Calculator className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold">"What-If" Simulator</h3>
+                        <p className="text-muted-foreground">See how extra savings can accelerate your goals.</p>
+                    </div>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-8">
+                    <div className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Extra Monthly Savings</label>
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="range"
+                                    min="50"
+                                    max="2000"
+                                    step="50"
+                                    value={extraSavings}
+                                    onChange={(e) => setExtraSavings(Number(e.target.value))}
+                                    className="flex-1 h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                                />
+                                <div className="px-4 py-2 bg-muted rounded-lg font-mono font-bold w-24 text-center">
+                                    ${extraSavings}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={runSimulation}
+                            disabled={simulating}
+                            className="w-full py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                        >
+                            {simulating ? (
+                                <>Simulating...</>
+                            ) : (
+                                <>
+                                    Run Simulation <ArrowRight className="w-4 h-4" />
+                                </>
+                            )}
+                        </button>
+                    </div>
+
+                    <div className="md:col-span-2 bg-muted/30 rounded-xl p-6 border border-border">
+                        {scenario ? (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+                                <div className="flex items-start gap-3">
+                                    <Sparkles className="w-5 h-5 text-purple-600 mt-1" />
+                                    <div>
+                                        <h4 className="font-semibold text-lg">Impact Analysis</h4>
+                                        <p className="text-muted-foreground">{scenario.impact_description}</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid sm:grid-cols-2 gap-4 mt-4">
+                                    {scenario.new_deadlines.map((d, i) => (
+                                        <div key={i} className="bg-background p-4 rounded-lg border border-border shadow-sm">
+                                            <p className="font-medium text-sm text-muted-foreground">{d.goal_name}</p>
+                                            <div className="flex items-baseline gap-2 mt-1">
+                                                <span className="text-lg font-bold text-green-600">
+                                                    {new Date(d.new_date).toLocaleDateString()}
+                                                </span>
+                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                                                    {d.months_saved} months sooner!
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm text-yellow-700">
+                                    <strong>Suggestion:</strong> {scenario.trade_off_suggestion}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8">
+                                <ArrowUpRight className="w-12 h-12 mb-4 opacity-20" />
+                                <p>Adjust the slider and run a simulation to see how faster you can reach your goals.</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {goals.length === 0 ? (
-                    <div className="col-span-full flex flex-col items-center justify-center p-12 border-2 border-dashed border-border rounded-xl text-center">
-                        <div className="p-4 bg-muted rounded-full mb-4">
-                            <Target className="w-8 h-8 text-muted-foreground" />
-                        </div>
-                        <h3 className="text-lg font-semibold mb-2">No Goals Yet</h3>
-                        <p className="text-muted-foreground mb-6 max-w-sm">
-                            Set financial goals to track your progress and achieve your dreams.
-                        </p>
-                        <button
-                            onClick={() => setIsCreating(true)}
-                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-                        >
-                            Create Your First Goal
-                        </button>
-                    </div>
-                ) : (
-                    goals.map((goal) => {
-                        const progress = (goal.currentAmount / goal.targetAmount) * 100;
-                        const monthlyNeeded = calculateMonthlySavings(goal.targetAmount, goal.currentAmount, goal.deadline);
-
-                        return (
-                            <div key={goal.id} className="bg-card border border-border rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className="p-3 bg-muted rounded-xl">
-                                        {iconMap[goal.icon] || <Target className="w-6 h-6" />}
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-sm text-muted-foreground">Target</p>
-                                        <p className="font-bold">${goal.targetAmount.toLocaleString()}</p>
-                                    </div>
-                                </div>
-
-                                <h3 className="text-xl font-bold mb-1">{goal.name}</h3>
-                                <p className="text-sm text-muted-foreground mb-4">by {new Date(goal.deadline).toLocaleDateString()}</p>
-
-                                <div className="space-y-2 mb-4">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="font-medium">${goal.currentAmount.toLocaleString()} saved</span>
-                                        <span className="text-muted-foreground">{progress.toFixed(0)}%</span>
-                                    </div>
-                                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-primary transition-all duration-1000 ease-out"
-                                            style={{ width: `${progress}%` }}
+            {/* Add Goal Modal */}
+            {isCreating && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-card w-full max-w-md rounded-xl shadow-2xl p-6 animate-in zoom-in-95">
+                        <h3 className="text-xl font-bold mb-4">Create New Goals</h3>
+                        <form onSubmit={handleAddGoals} className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+                            {newGoals.map((goal, index) => (
+                                <div key={index} className="space-y-4 p-4 border border-border rounded-lg relative">
+                                    {newGoals.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => removeGoalForm(index)}
+                                            className="absolute top-2 right-2 text-muted-foreground hover:text-destructive"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Goal Name</label>
+                                        <input
+                                            type="text"
+                                            value={goal.name}
+                                            onChange={(e) => updateGoalForm(index, 'name', e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg border border-input bg-background"
+                                            placeholder="e.g., New Car"
+                                            autoFocus={index === 0}
                                         />
                                     </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Target Amount ($)</label>
+                                            <input
+                                                type="number"
+                                                value={goal.targetAmount}
+                                                onChange={(e) => updateGoalForm(index, 'targetAmount', e.target.value)}
+                                                className="w-full px-3 py-2 rounded-lg border border-input bg-background"
+                                                placeholder="5000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">Target Date</label>
+                                            <input
+                                                type="date"
+                                                value={goal.deadline}
+                                                onChange={(e) => updateGoalForm(index, 'deadline', e.target.value)}
+                                                className="w-full px-3 py-2 rounded-lg border border-input bg-background"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
+                            ))}
 
-                                <div className="pt-4 border-t border-border flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">Monthly saving needed:</span>
-                                    <span className="font-semibold flex items-center gap-1 text-green-600">
-                                        ${monthlyNeeded.toFixed(0)}
-                                        <ArrowUpRight className="w-3 h-3" />
-                                    </span>
-                                </div>
+                            <button
+                                type="button"
+                                onClick={addNewGoalForm}
+                                className="w-full py-2 border border-dashed border-primary/30 rounded-lg text-primary hover:bg-primary/5 flex items-center justify-center gap-2"
+                            >
+                                <Plus className="w-4 h-4" /> Add Another Goal
+                            </button>
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCreating(false)}
+                                    className="px-4 py-2 text-sm font-medium hover:bg-muted rounded-lg transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+                                >
+                                    Create Goals
+                                </button>
                             </div>
-                        );
-                    })
-                )}
-            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

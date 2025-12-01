@@ -5,3 +5,6 @@ langchain
 langchain-openai
 pydantic
 sqlalchemy
+sentence-transformers
+langchain-community
+chromadb

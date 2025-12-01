@@ -11,7 +11,7 @@ interface ChatPanelProps {
 export const ChatPanel: React.FC<ChatPanelProps> = ({ isOpen, onClose }) => {
     const [input, setInput] = useState('');
 
-    const { chatHistory, addChatMessage, transactions, apiKey, apiEndpoint, moveBudget, addGoal } = useStore();
+    const { chatHistory, addChatMessage, transactions, moveBudget, addGoal } = useStore();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [isTyping, setIsTyping] = useState(false);
     const [processedActions, setProcessedActions] = useState<Set<string>>(new Set());
@@ -44,16 +44,21 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ isOpen, onClose }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     query: userMsg.content,
-                    transactions: transactions,
-                    api_key: apiKey,
-                    api_endpoint: apiEndpoint
+                    transactions: transactions
                 })
             });
 
-            if (!response.ok) throw new Error('Failed to get response');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ detail: 'Unknown server error' }));
+                throw new Error(errorData.detail || 'Failed to get response');
+            }
 
             const data = await response.json();
-            const agentResponse = data.response; // This is now an object { type, details, message }
+            const agentResponse = data; // Backend returns the object directly { type, details, message }
+
+            if (!agentResponse || !agentResponse.message) {
+                throw new Error('Invalid response format from server');
+            }
 
             const aiMsg = {
                 id: (Date.now() + 1).toString(),
@@ -63,11 +68,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ isOpen, onClose }) => {
                 timestamp: new Date().toISOString()
             };
             addChatMessage(aiMsg);
-        } catch (error) {
+        } catch (error: any) {
+            console.error("Chat error:", error);
             const errorMsg = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant' as const,
-                content: "I'm having trouble connecting to the server. Please check your API settings.",
+                content: `❌ Error: ${error.message || "I'm having trouble connecting to the server."}`,
                 timestamp: new Date().toISOString()
             };
             addChatMessage(errorMsg);

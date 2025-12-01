@@ -1,28 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { PieChart, Check, Sparkles, Wallet } from 'lucide-react';
+import { PieChart, Check, Sparkles, Wallet, Pencil, X } from 'lucide-react';
 import clsx from 'clsx';
 
 export const BudgetSection: React.FC = () => {
-    const { transactions, budgets, setBudgets, apiKey, apiEndpoint } = useStore();
+    const { transactions, budgets, setBudgets } = useStore();
     const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [editingCategory, setEditingCategory] = useState<string | null>(null);
+    const [editAmount, setEditAmount] = useState<string>('');
 
 
     useEffect(() => {
-        if (transactions.length > 0 && budgets.length === 0 && apiKey) {
+        if (transactions.length > 0 && budgets.length === 0) {
             fetchSuggestions();
         }
-    }, [transactions, apiKey]);
+    }, [transactions]);
 
     const fetchSuggestions = async () => {
         try {
-            const response = await fetch('http://localhost:8000/budget_suggestion', {
+            const response = await fetch('http://localhost:8000/budget-suggestion', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    transactions,
-                    api_key: apiKey,
-                    api_endpoint: apiEndpoint
+                    transactions
                 })
             });
             if (response.ok) {
@@ -51,6 +51,40 @@ export const BudgetSection: React.FC = () => {
 
         // Remove from suggestions
         setSuggestions(suggestions.filter(s => s.category !== suggestion.category));
+    };
+
+    const startEditing = (category: string, currentLimit: number) => {
+        setEditingCategory(category);
+        setEditAmount(currentLimit.toString());
+    };
+
+    const cancelEditing = () => {
+        setEditingCategory(null);
+        setEditAmount('');
+    };
+
+    const saveBudget = (category: string) => {
+        const limit = parseFloat(editAmount);
+        if (isNaN(limit) || limit <= 0) return;
+
+        const spent = transactions
+            .filter(t => t.category === category)
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const newBudget = { category, limit, spent };
+
+        // Update existing or add new
+        const existingIdx = budgets.findIndex(b => b.category === category);
+        if (existingIdx >= 0) {
+            const updated = [...budgets];
+            updated[existingIdx] = newBudget;
+            setBudgets(updated);
+        } else {
+            setBudgets([...budgets, newBudget]);
+        }
+
+        setEditingCategory(null);
+        setEditAmount('');
     };
 
     return (
@@ -126,9 +160,35 @@ export const BudgetSection: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <h4 className="font-semibold">{category}</h4>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            ${spent.toFixed(0)} spent of ${budget.limit} limit
-                                                        </p>
+                                                        {editingCategory === category ? (
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <input
+                                                                    type="number"
+                                                                    value={editAmount}
+                                                                    onChange={(e) => setEditAmount(e.target.value)}
+                                                                    className="w-24 px-2 py-1 text-sm border border-input rounded bg-background"
+                                                                    autoFocus
+                                                                />
+                                                                <button onClick={() => saveBudget(category)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                                                                    <Check className="w-4 h-4" />
+                                                                </button>
+                                                                <button onClick={cancelEditing} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                                                                    <X className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    ${spent.toFixed(0)} spent of ${budget.limit} limit
+                                                                </p>
+                                                                <button
+                                                                    onClick={() => startEditing(category, budget.limit)}
+                                                                    className="p-0.5 text-muted-foreground hover:text-primary transition-colors"
+                                                                >
+                                                                    <Pencil className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <span className={clsx(
@@ -165,25 +225,42 @@ export const BudgetSection: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            {suggestion ? (
-                                                <button
-                                                    onClick={() => applyBudget(suggestion)}
-                                                    className="px-3 py-1.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-md hover:bg-indigo-200 transition-colors flex items-center gap-1"
-                                                >
-                                                    <Sparkles className="w-3 h-3" />
-                                                    Set Limit: ${suggestion.suggested_limit}
-                                                </button>
+                                            {editingCategory === category ? (
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={editAmount}
+                                                        onChange={(e) => setEditAmount(e.target.value)}
+                                                        className="w-24 px-2 py-1 text-sm border border-input rounded bg-background"
+                                                        placeholder="Limit"
+                                                        autoFocus
+                                                    />
+                                                    <button onClick={() => saveBudget(category)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                                                        <Check className="w-4 h-4" />
+                                                    </button>
+                                                    <button onClick={cancelEditing} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             ) : (
-                                                <button
-                                                    onClick={() => {
-                                                        // Simple default: 10% less than current spending
-                                                        const defaultLimit = Math.ceil(spent * 0.9);
-                                                        applyBudget({ category, suggested_limit: defaultLimit });
-                                                    }}
-                                                    className="px-3 py-1.5 border border-border text-muted-foreground text-xs font-medium rounded-md hover:bg-muted transition-colors"
-                                                >
-                                                    Add Budget
-                                                </button>
+                                                <div className="flex items-center gap-2">
+                                                    {suggestion && (
+                                                        <button
+                                                            onClick={() => applyBudget(suggestion)}
+                                                            className="px-3 py-1.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-md hover:bg-indigo-200 transition-colors flex items-center gap-1"
+                                                            title={`AI Recommended: $${suggestion.suggested_limit}`}
+                                                        >
+                                                            <Sparkles className="w-3 h-3" />
+                                                            ${suggestion.suggested_limit}
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => startEditing(category, Math.ceil(spent * 0.9))}
+                                                        className="px-3 py-1.5 border border-border text-muted-foreground text-xs font-medium rounded-md hover:bg-muted transition-colors"
+                                                    >
+                                                        Set Limit
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     );

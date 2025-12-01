@@ -47,6 +47,17 @@ export const useStore = create<AppState>()(
                 goals: state.goals.map((g) => (g.id === id ? { ...g, ...updates } : g))
             })),
 
+            removeGoal: async (id) => {
+                set((state) => ({
+                    goals: state.goals.filter((g) => g.id !== id)
+                }));
+                try {
+                    await fetch(`http://localhost:8000/goals/${id}`, { method: 'DELETE' });
+                } catch (error) {
+                    console.error("Failed to delete goal", error);
+                }
+            },
+
             setBudgets: (budgets) => set({ budgets }),
 
             addBudget: (budget) => set((state) => ({
@@ -72,10 +83,6 @@ export const useStore = create<AppState>()(
 
             clearChat: () => set({ chatHistory: [] }),
 
-            apiKey: '',
-            apiEndpoint: 'https://pocbfs.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview',
-            setApiKey: (key) => set({ apiKey: key }),
-            setApiEndpoint: (endpoint) => set({ apiEndpoint: endpoint }),
             setClosingBalance: (balance) => set({ closingBalance: balance }),
 
             fetchTransactions: async () => {
@@ -83,9 +90,13 @@ export const useStore = create<AppState>()(
                     const response = await fetch('http://localhost:8000/transactions');
                     if (response.ok) {
                         const data = await response.json();
+                        // Safe mapping to ensure frontend types are met even if DB has missing fields
                         const transactions = data.map((t: any) => ({
                             ...t,
                             id: t.id.toString(),
+                            merchant: t.merchant || t.description || 'Unknown', // Fallback
+                            type: t.type || 'expense', // Fallback
+                            isRecurring: t.is_recurring || false // Handle snake_case from DB
                         }));
                         set({ transactions });
                     }
@@ -100,8 +111,11 @@ export const useStore = create<AppState>()(
                     if (response.ok) {
                         const data = await response.json();
                         const goals = data.map((g: any) => ({
-                            ...g,
                             id: g.id.toString(),
+                            name: g.name,
+                            targetAmount: g.target_amount,
+                            currentAmount: g.current_amount,
+                            deadline: g.deadline,
                             icon: 'Target'
                         }));
                         set({ goals });
@@ -110,9 +124,8 @@ export const useStore = create<AppState>()(
                     console.error("Failed to fetch goals", error);
                 }
             },
-
             fetchAnomalies: async () => {
-                const { transactions, apiKey, apiEndpoint } = get();
+                const { transactions } = get();
                 if (transactions.length === 0) return;
 
                 try {
@@ -120,9 +133,7 @@ export const useStore = create<AppState>()(
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            transactions,
-                            api_key: apiKey,
-                            api_endpoint: apiEndpoint
+                            transactions
                         })
                     });
                     if (response.ok) {
@@ -132,13 +143,35 @@ export const useStore = create<AppState>()(
                 } catch (error) {
                     console.error("Failed to fetch anomalies", error);
                 }
+            },
+
+            clearData: async () => {
+                try {
+                    await fetch('http://localhost:8000/transactions', { method: 'DELETE' });
+                    set({
+                        transactions: [],
+                        goals: [],
+                        budgets: [],
+                        anomalies: [],
+                        closingBalance: undefined,
+                        chatHistory: [
+                            {
+                                id: 'welcome',
+                                role: 'assistant',
+                                content: "Hello! I'm your personal finance assistant. Ask me about your spending, goals, or budget.",
+                                timestamp: new Date().toISOString()
+                            }
+                        ]
+                    });
+                } catch (error) {
+                    console.error("Failed to clear data", error);
+                }
             }
         }),
         {
             name: 'fin-ai-storage',
-            partialize: (state) => ({
-                apiKey: state.apiKey,
-                apiEndpoint: state.apiEndpoint
+            partialize: () => ({
+                // No longer persisting API key/endpoint
             }),
         }
     )

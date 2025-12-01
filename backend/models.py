@@ -1,14 +1,17 @@
-from sqlalchemy import Column, Integer, String, Float, Date
+from sqlalchemy import Column, Integer, String, Float, Boolean
 from database import Base
 
 class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(String, index=True) # Storing as string for simplicity, can be Date
+    date = Column(String, index=True) 
     amount = Column(Float)
     description = Column(String)
+    merchant = Column(String)      # Added this
     category = Column(String)
+    type = Column(String)          # Added this (income/expense)
+    is_recurring = Column(Boolean, default=False) # Added this
 
 class Goal(Base):
     __tablename__ = "goals"
@@ -17,4 +20,4 @@ class Goal(Base):
     name = Column(String, index=True)
     target_amount = Column(Float)
     current_amount = Column(Float)
-    deadline = Column(String) # Storing as string for simplicity
+    deadline = Column(String)

@@ -1,24 +1,30 @@
-from fastapi import FastAPI, HTTPException
+import uvicorn
+import shutil
+import os
+from sqlalchemy.orm import Session
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
-from typing import List
-from services.llm_service import extract_transactions_from_text, chat_with_data, generate_financial_insight, generate_budget_suggestion, detect_anomalies, generate_savings_scenario
 
-import uvicorn
-from sqlalchemy.orm import Session
-from fastapi import Depends
 import models
 from database import SessionLocal, engine
+from services.llm_service import (
+    extract_transactions_from_text,
+    chat_with_data,
+    generate_financial_insight,
+    generate_budget_suggestion,
+    detect_anomalies,
+    generate_savings_scenario,
+    ingest_documents
+)
 
+# Load environment variables
+load_dotenv()
+
+# Create tables
 models.Base.metadata.create_all(bind=engine)
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 app = FastAPI()
 
@@ -30,184 +36,227 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# --- Pydantic Models ---
+
 class AnalyzeRequest(BaseModel):
     text: List[str]
-    api_key: str
-    api_endpoint: str = "https://api.openai.com/v1"
 
 class ChatRequest(BaseModel):
     query: str
     transactions: List[dict]
-    api_key: str
-    api_endpoint: str = "https://api.openai.com/v1"
 
 class InsightRequest(BaseModel):
     transactions: List[dict]
     goals: List[dict]
-    api_key: str
-    api_endpoint: str = "https://api.openai.com/v1"
 
 class BudgetRequest(BaseModel):
     transactions: List[dict]
-    api_key: str
-    api_endpoint: str = "https://api.openai.com/v1"
 
 class AnomalyRequest(BaseModel):
     transactions: List[dict]
-    api_key: str
-    api_endpoint: str = "https://api.openai.com/v1"
 
-class TransactionModel(BaseModel):
+class WhatIfRequest(BaseModel):
+    transactions: List[dict]
+    goals: List[dict]
+    extra_savings: float
+
+class TransactionCreate(BaseModel):
     date: str
-    amount: float
-    description: str
-    category: str
     merchant: str
+    amount: float
+    type: str
+    category: str
+    description: str
 
-class GoalModel(BaseModel):
+class GoalCreate(BaseModel):
     name: str
     target_amount: float
-    current_amount: float
+    current_amount: float = 0
     deadline: str
 
-@app.get("/transactions")
-def get_transactions(db: Session = Depends(get_db)):
-    return db.query(models.Transaction).all()
 
-@app.post("/transactions")
-def create_transactions(transactions: List[TransactionModel], db: Session = Depends(get_db)):
-    try:
-        added_count = 0
-        skipped_count = 0
-        
-        for t in transactions:
-            # Check for duplicate
-            existing = db.query(models.Transaction).filter(
-                models.Transaction.date == t.date,
-                models.Transaction.amount == t.amount,
-                models.Transaction.description == t.description
-            ).first()
-            
-            if existing:
-                skipped_count += 1
-                continue
+# --- Endpoints ---
 
-            db_transaction = models.Transaction(
-                date=t.date,
-                amount=t.amount,
-                description=t.description, # Mapping merchant to description/merchant
-                category=t.category
-            )
-            db.add(db_transaction)
-            added_count += 1
-        
-        db.commit()
-        return {
-            "message": f"Processed {len(transactions)} transactions.",
-            "added": added_count,
-            "skipped": skipped_count
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/goals")
-def get_goals(db: Session = Depends(get_db)):
-    return db.query(models.Goal).all()
-
-@app.post("/goals")
-def create_goal(goal: GoalModel, db: Session = Depends(get_db)):
-    try:
-        db_goal = models.Goal(
-            name=goal.name,
-            target_amount=goal.target_amount,
-            current_amount=goal.current_amount,
-            deadline=goal.deadline
-        )
-        db.add(db_goal)
-        db.commit()
-        db.refresh(db_goal)
-        return db_goal
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/goals/{goal_id}")
-def update_goal(goal_id: int, goal: GoalModel, db: Session = Depends(get_db)):
-    db_goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
-    if not db_goal:
-        raise HTTPException(status_code=404, detail="Goal not found")
-    
-    db_goal.name = goal.name
-    db_goal.target_amount = goal.target_amount
-    db_goal.current_amount = goal.current_amount
-    db_goal.deadline = goal.deadline
-    
-    db.commit()
-    return db_goal
+@app.get("/")
+def read_root():
+    return {"message": "Finance AI Backend is running"}
 
 @app.post("/analyze")
 async def analyze_statement(request: AnalyzeRequest):
     try:
-        result = extract_transactions_from_text(request.text, request.api_key, request.api_endpoint)
+        # Get API key from env
+        api_key = os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("OPENAI_BASE_URL")
+        
+        if not api_key:
+            raise HTTPException(status_code=500, detail="Server misconfiguration: OPENAI_API_KEY not set.")
+
+        text_lines = request.text
+
+        # 1. Ingest for RAG
+        ingest_documents(text_lines, api_key)
+        
+        # 2. Extract Structured Data
+        result = extract_transactions_from_text(text_lines, api_key, base_url)
+        
         return result
     except Exception as e:
+        print(f"Error in analyze_statement: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
-        response = chat_with_data(request.query, request.transactions, request.api_key, request.api_endpoint)
-        return {"response": response}
+        api_key = os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if not api_key:
+             raise HTTPException(status_code=500, detail="Server misconfiguration: OPENAI_API_KEY not set.")
+
+        response = chat_with_data(request.query, request.transactions, api_key, base_url)
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/insight")
-async def generate_insight(request: InsightRequest):
+async def get_insight(request: InsightRequest):
     try:
-        insight = generate_financial_insight(request.transactions, request.goals, request.api_key, request.api_endpoint)
+        api_key = os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if not api_key:
+             raise HTTPException(status_code=500, detail="Server misconfiguration: OPENAI_API_KEY not set.")
+
+        insight = generate_financial_insight(request.transactions, request.goals, api_key, base_url)
         return insight
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/budget_suggestion")
-async def suggest_budgets(request: BudgetRequest):
+@app.post("/budget-suggestion")
+async def get_budget_suggestion(request: BudgetRequest):
     try:
-        suggestions = generate_budget_suggestion(request.transactions, request.api_key, request.api_endpoint)
-        return {"suggestions": suggestions}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        api_key = os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if not api_key:
+             raise HTTPException(status_code=500, detail="Server misconfiguration: OPENAI_API_KEY not set.")
 
+        suggestions = generate_budget_suggestion(request.transactions, api_key, base_url)
+        return {"suggestions": suggestions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/anomalies")
 async def get_anomalies(request: AnomalyRequest):
     try:
-        anomalies = detect_anomalies(request.transactions, request.api_key, request.api_endpoint)
+        api_key = os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if not api_key:
+             raise HTTPException(status_code=500, detail="Server misconfiguration: OPENAI_API_KEY not set.")
+
+        anomalies = detect_anomalies(request.transactions, api_key, base_url)
         return {"anomalies": anomalies}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/savings-scenario")
+async def what_if_analysis(request: WhatIfRequest):
+    try:
+        api_key = os.getenv("OPENAI_API_KEY")
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if not api_key:
+             raise HTTPException(status_code=500, detail="Server misconfiguration: OPENAI_API_KEY not set.")
+
+        scenario = generate_savings_scenario(request.transactions, request.goals, request.extra_savings, api_key, base_url)
+        return scenario
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-class WhatIfRequest(BaseModel):
-    transactions: List[dict]
-    goals: List[dict]
-    extra_savings: float
-    api_key: str
-    api_endpoint: str = "https://api.openai.com/v1"
+# --- Database Endpoints (Optional, for persistence) ---
 
-@app.post("/what_if")
-async def what_if_analysis(request: WhatIfRequest):
+@app.post("/transactions")
+def create_transactions(transactions: List[TransactionCreate], db: Session = Depends(get_db)):
     try:
-        print(f"Received what_if request: extra_savings={request.extra_savings}")
-        scenario = generate_savings_scenario(request.transactions, request.goals, request.extra_savings, request.api_key, request.api_endpoint)
-        print(f"Generated scenario: {scenario}")
-        return scenario
+        db_transactions = []
+        for t in transactions:
+            db_t = models.Transaction(
+                date=t.date,
+                merchant=t.merchant,
+                amount=t.amount,
+                type=t.type,
+                category=t.category,
+                description=t.description
+            )
+            db.add(db_t)
+            db_transactions.append(db_t)
+        db.commit()
+        for t in db_transactions:
+            db.refresh(t)
+        return db_transactions
     except Exception as e:
-        print(f"Error in what_if_analysis: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/transactions")
+def read_transactions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    transactions = db.query(models.Transaction).offset(skip).limit(limit).all()
+    return transactions
+
+@app.get("/goals")
+def read_goals(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    goals = db.query(models.Goal).offset(skip).limit(limit).all()
+    return goals
+
+@app.post("/goals")
+def create_goals(goals: List[GoalCreate], db: Session = Depends(get_db)):
+    try:
+        db_goals = []
+        for g in goals:
+            db_g = models.Goal(
+                name=g.name,
+                target_amount=g.target_amount,
+                current_amount=g.current_amount,
+                deadline=g.deadline
+            )
+            db.add(db_g)
+            db_goals.append(db_g)
+        db.commit()
+        for g in db_goals:
+            db.refresh(g)
+        return db_goals
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/goals/{goal_id}")
+def delete_goal(goal_id: int, db: Session = Depends(get_db)):
+    try:
+        goal = db.query(models.Goal).filter(models.Goal.id == goal_id).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Goal not found")
+        db.delete(goal)
+        db.commit()
+        return {"message": "Goal deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/transactions")
+def clear_data(db: Session = Depends(get_db)):
+    try:
+        # Delete all transactions
+        db.query(models.Transaction).delete()
+        # Delete all goals (optional, but "clear everything" implies this)
+        db.query(models.Goal).delete()
+        db.commit()
+        return {"message": "All data cleared successfully"}
+    except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
