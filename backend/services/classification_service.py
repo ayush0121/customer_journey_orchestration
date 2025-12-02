@@ -54,7 +54,7 @@ from typing import List
 
 class TransactionClassifier:
     def __init__(self, model_name: str = "cross-encoder/nli-distilroberta-base"):
-        """
+        """NER
         Initialize the CrossEncoder model.
         """
         with open("backend_debug.log", "a") as f:
@@ -64,34 +64,18 @@ class TransactionClassifier:
         with open("backend_debug.log", "a") as f:
             f.write("CrossEncoder model loaded successfully.\n")
         
-        # Define keyword mapping for fast and accurate classification
-        # ORDER MATTERS: Specific categories first, generic ones last.
+       
         self.keyword_map = {
-            'Streaming Services': ['NETFLIX', 'HULU', 'DISNEY+', 'HBO', 'HBO MAX', 'PRIME VIDEO'],
-            'Music Services': ['SPOTIFY', 'APPLE MUSIC', 'AMAZON MUSIC', 'TIDAL'],
-            'Fitness & Wellness': ['GYM', 'CLASSPASS', 'FITBIT', 'YOGA', 'PILATES', 'PERSONAL TRAINER'],
-            'Software Subscriptions': ['MICROSOFT', 'ADOBE', 'JETBRAINS', 'ATLASSIAN', 'ATLASIAN', 'SOFTWARE', 'GITHUB', 'NOTION', 'SLACK', 'TRELLO', 'ASAANA', 'ASANA'],
-            'Cloud Storage': ['DROPBOX', 'GOOGLE DRIVE', 'GOOGLEDRIVE', 'ONE DRIVE', 'ONE-DRIVE', 'ONEDRIVE', 'ICLOUD', 'CLOUD STORAGE', 'GOOGLE ONE'],
-            'Education': ['EDU', 'COURSE', 'UDEMY', 'COURSERA', 'SCHOOL', 'UNIVERSITY', 'COLLEGE', 'TUITION', 'LEARNING', 'BOOTCAMP', 'K12'],
-            'Childcare': ['DAYCARE', 'NANNY', 'SITTER', 'PRESCHOOL', 'CHILDCARE'],
-            'Pet Care': ['VET', 'PETCO', 'PETSMART', 'PET', 'ANIMAL', 'GROOMING'],
-            'Gifts and Holidays': ['GIFT', 'HALLMARK', 'TOYS', 'GIFT SHOP', 'PRESENT', 'FLOWERS'],
-            'Tax Payments': ['TAX', 'IRS', 'HMRC', 'TDS', 'PAYROLL TAX', 'INCOME TAX'],
-            'Insurance premiums': ['INSURANCE', 'PREMIUM', 'GEICO', 'AETNA', 'BLUE CROSS', 'PRUDENTIAL', 'HDFC ERGO', 'LIC'],
-            'Loan Payments': ['LOAN PAYMENT', 'EMI', 'HOME LOAN', 'AUTO LOAN', 'PERSONAL LOAN', 'LOAN'],
-            'Memberships': ['MEMBERSHIP', 'ANNUAL FEE', 'SUBSCRIPTION', 'MEMBER'],
-            'Healthcare': ['PHARMACY', 'CVS', 'WALGREENS', 'KAISER', 'HOSPITAL', 'CLINIC', 'DOCTOR', 'MEDICINE'],
+            'Subscriptions': ['MEMBERSHIP', 'ANNUAL FEE', 'SUBSCRIPTION', 'MEMBER','NETFLIX', 'HULU', 'DISNEY+', 'HBO', 'HBO MAX', 'PRIME VIDEO','SPOTIFY', 'APPLE MUSIC', 'AMAZON MUSIC', 'TIDAL','MEMBERSHIP', 'ANNUAL FEE', 'SUBSCRIPTION', 'MEMBER','MICROSOFT', 'ADOBE', 'JETBRAINS', 'ATLASSIAN', 'ATLASIAN', 'SOFTWARE', 'GITHUB', 'NOTION', 'SLACK', 'TRELLO', 'ASAANA', 'ASANA','DROPBOX', 'GOOGLE DRIVE', 'GOOGLEDRIVE', 'ONE DRIVE', 'ONE-DRIVE', 'ONEDRIVE', 'ICLOUD', 'CLOUD STORAGE', 'GOOGLE ONE'],
             'Transportation': ['UBER', 'LYFT', 'SHELL', 'CHEVRON', 'BP', 'AMTRAK', 'METRO', 'TAXI', 'TOLL', 'TRANSPORT'],
             'Travel & Vacations': ['AIRBNB', 'EXPEDIA', 'DELTA', 'UNITED', 'SOUTHWEST', 'HOTEL', 'BOOKING.COM', 'BOOKING', 'TRAVEL', 'AIRLINE', 'AVION', 'MAKING TRAVEL', 'HOTELS.COM'],
-            'Investement Contributions': ['VANGUARD', 'SCHWAB', 'FIDELITY', 'ROBINHOOD', 'MUTUAL FUND', 'ETF', 'SIP', 'INVEST', 'BROKERAGE', 'ZERODHA', 'UPSTOX'],
             'Credit Card Payments': ['CARD PAYMENT', 'CREDIT CARD PAYMENT', 'AMEX PAYMENT', 'VISA PAYMENT', 'MASTERCARD PAYMENT', 'CC PAYMENT'],
             'Income': ['SALARY', 'PAYCHECK', 'DEPOSIT', 'INCOME', 'DIVIDEND', 'INTEREST', 'REFUND', 'REIMBURSEMENT'],
-            
-            # Generic Categories (Check these later)
+            'Others': ['PHARMACY', 'CVS', 'WALGREENS', 'KAISER', 'HOSPITAL', 'CLINIC', 'DOCTOR', 'MEDICINE','VANGUARD', 'SCHWAB', 'FIDELITY', 'ROBINHOOD', 'MUTUAL FUND', 'ETF', 'SIP', 'INVEST', 'BROKERAGE', 'ZERODHA', 'UPSTOX','LOAN PAYMENT', 'EMI', 'HOME LOAN', 'AUTO LOAN', 'PERSONAL LOAN', 'LOAN','TAX', 'IRS', 'HMRC', 'TDS', 'PAYROLL TAX', 'INCOME TAX','INSURANCE', 'PREMIUM', 'GEICO', 'AETNA', 'BLUE CROSS', 'PRUDENTIAL', 'HDFC ERGO', 'LIC','GYM', 'CLASSPASS', 'FITBIT', 'YOGA', 'PILATES', 'PERSONAL TRAI','DAYCARE', 'NANNY', 'SITTER', 'PRESCHOOL', 'CHILDCARE','VET', 'PETCO', 'PETSMART', 'PET', 'ANIMAL', 'GROOMING','EDU', 'COURSE', 'UDEMY', 'COURSERA', 'SCHOOL', 'UNIVERSITY', 'COLLEGE', 'TUITION', 'LEARNING', 'BOOTCAMP', 'K12'],
             'Groceries': ['WHOLEFOODS', 'WHOLEFDS', 'TRADER JOE', 'TRADER JOES', 'SAFEWAY', 'KROGER', 'ALDI', 'COSTCO', 'WALMART', 'PUBLIX', 'SPROUTS', 'GROCERY', 'SUPERMARKET', 'MARKET', 'BIG BASKET', 'GROCER', 'INSTA MART'],
             'Dining': ['STARBUCKS', 'MCDONALD', 'MCDONALDS', 'MCD', 'BURGER', 'PIZZA', 'PIZZA HUT', 'DOMINOS', 'PAPA JOHN', 'RESTAURANT', 'CAFE', 'DOORDASH', 'UBEREATS', 'GRUBHUB', 'ZOMATO', 'SWIGGY', 'DINING', 'FOOD', 'DINING OUT', 'DINING-OUT'],
             'Shopping': ['AMZN', 'AMAZON', 'TARGET', 'WALMART', 'BEST BUY', 'EBAY', 'TJMAXX', 'IKEA', 'SEPHORA', 'SHOP', 'MALL', 'FLIPKART'],
-            'Utilities': ['ELECTRIC', 'WATER', 'GAS', 'UTILITY', 'PG&E', 'PGE', 'CON EDISON', 'CONED', 'SCE', 'DOMINION', 'WATER BILL', 'ELECTRICITY', 'TELECOM', 'INTERNET', 'BILL']
+            'Bills': ['RENT','ELECTRIC', 'WATER', 'GAS', 'UTILITY', 'PG&E', 'PGE', 'CON EDISON', 'CONED', 'SCE', 'DOMINION', 'WATER BILL', 'ELECTRICITY', 'TELECOM', 'INTERNET', 'BILL']
         }
         
         self.categories = list(self.keyword_map.keys()) + ["Income", "Miscellaneous"]
