@@ -44,7 +44,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ isOpen, onClose }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     query: userMsg.content,
-                    transactions: transactions
+                    transactions: transactions,
+                    budgets: useStore.getState().budgets,
+                    goals: useStore.getState().goals
                 })
             });
 

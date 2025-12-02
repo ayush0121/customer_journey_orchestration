@@ -52,6 +52,8 @@ class AnalyzeRequest(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     transactions: List[dict]
+    budgets: List[dict] = []
+    goals: List[dict] = []
 
 class InsightRequest(BaseModel):
     transactions: List[dict]
@@ -120,7 +122,7 @@ async def chat(request: ChatRequest):
         if not api_key:
              raise HTTPException(status_code=500, detail="Server misconfiguration: OPENAI_API_KEY not set.")
 
-        response = chat_with_data(request.query, request.transactions, api_key, base_url)
+        response = chat_with_data(request.query, request.transactions, request.budgets, request.goals, api_key, base_url)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -255,6 +257,35 @@ def clear_data(db: Session = Depends(get_db)):
         db.query(models.Goal).delete()
         db.commit()
         return {"message": "All data cleared successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+class CategoryUpdate(BaseModel):
+    category: str
+
+@app.put("/transactions/{transaction_id}/category")
+def update_transaction_category(transaction_id: int, update: CategoryUpdate, db: Session = Depends(get_db)):
+    try:
+        transaction = db.query(models.Transaction).filter(models.Transaction.id == transaction_id).first()
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        
+        old_category = transaction.category
+        new_category = update.category
+        
+        # Update transaction
+        transaction.category = new_category
+        db.commit()
+        
+        # Learn from correction
+        # We use the description (or merchant) as the pattern
+        # Ideally we use the description as it's more specific, or merchant if description is generic.
+        # For now, let's use description as the pattern.
+        from services.classification_service import classifier
+        classifier.learn_correction(transaction.description, new_category)
+        
+        return {"message": "Category updated and rule learned", "transaction": transaction}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

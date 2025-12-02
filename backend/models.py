@@ -21,3 +21,11 @@ class Goal(Base):
     target_amount = Column(Float)
     current_amount = Column(Float)
     deadline = Column(String)
+
+class ClassificationRule(Base):
+    __tablename__ = "classification_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pattern = Column(String, index=True) # The text/merchant to match
+    category = Column(String) # The target category
+    match_type = Column(String, default="contains") # exact, contains

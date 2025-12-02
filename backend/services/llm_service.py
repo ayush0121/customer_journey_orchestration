@@ -75,6 +75,9 @@ class SavingsScenario(BaseModel):
     impact_description: str = Field(description="Natural language explanation of the impact (e.g., 'You will reach your Car goal 3 months earlier').")
     trade_off_suggestion: str = Field(description="A suggestion on how to achieve this saving (e.g., 'This is equivalent to cutting 2 dinners out per month').")
 
+class CategoryList(BaseModel):
+    categories: List[str] = Field(description="List of categories corresponding to the input descriptions.")
+
 
 # --- Helper Functions ---
 
@@ -210,7 +213,8 @@ Return a JSON object with 'transactions' and 'closing_balance'."""),
     try:
         from services.classification_service import classifier
         descriptions = [t.get('description', '') for t in unique_transactions]
-        new_categories = classifier.classify_batch(descriptions)
+        # Pass API key and base_url to allow LLM fallback
+        new_categories = classifier.classify_batch(descriptions, api_key=api_key, base_url=base_url)
         for i, t in enumerate(unique_transactions):
             if t.get('merchant') is None:
                 t['merchant'] = "Unknown"
@@ -245,7 +249,7 @@ def detect_anomalies(transactions: List[dict], api_key: str, base_url: str = "ht
         print(f"Error detecting anomalies: {e}")
         return []
 
-def chat_with_data(query: str, transactions: List[dict], api_key: str, base_url: str = "https://api.openai.com/v1") -> dict:
+def chat_with_data(query: str, transactions: List[dict], budgets: List[dict], goals: List[dict], api_key: str, base_url: str = "https://api.openai.com/v1") -> dict:
     llm = get_llm(api_key, base_url, temperature=0.7)
 
     # 1. Retrieve relevant context from PDF if available
@@ -262,6 +266,7 @@ def chat_with_data(query: str, transactions: List[dict], api_key: str, base_url:
     total_income = sum(t['amount'] for t in transactions if t.get('type') == 'income')
     total_expense = sum(t['amount'] for t in transactions if t.get('type') == 'expense')
     
+    # Category Totals (All Time)
     category_totals = {}
     for t in transactions:
         if t.get('type') == 'expense':
@@ -270,21 +275,63 @@ def chat_with_data(query: str, transactions: List[dict], api_key: str, base_url:
             
     category_summary = "\n".join([f"   - {cat}: ${amt:.2f}" for cat, amt in category_totals.items()])
 
+    # Monthly Breakdown
+    monthly_data = {}
+    for t in transactions:
+        try:
+            date_str = t.get('date', '')
+            # Assume YYYY-MM-DD
+            month_key = date_str[:7] # YYYY-MM
+            if not month_key: continue
+            
+            if month_key not in monthly_data:
+                monthly_data[month_key] = {'income': 0, 'expense': 0, 'categories': {}}
+            
+            amt = float(t['amount'])
+            if t.get('type') == 'income':
+                monthly_data[month_key]['income'] += amt
+            else:
+                monthly_data[month_key]['expense'] += amt
+                cat = t.get('category', 'Other')
+                monthly_data[month_key]['categories'][cat] = monthly_data[month_key]['categories'].get(cat, 0) + amt
+        except:
+            continue
+
+    monthly_breakdown = []
+    for month, data in sorted(monthly_data.items(), reverse=True):
+        cat_str = ", ".join([f"{c}: ${a:.0f}" for c, a in data['categories'].items()])
+        monthly_breakdown.append(f"- **{month}**: Income ${data['income']:.0f}, Expense ${data['expense']:.0f} ({cat_str})")
+    
+    monthly_breakdown_str = "\n".join(monthly_breakdown)
+
+    # Budgets Context
+    budget_context = "\n".join([f"- {b['category']}: Limit ${b['limit']}, Spent ${b['spent']} (Remaining: ${b['limit'] - b['spent']})" for b in budgets])
+
+    # Goals Context
+    goal_context = "\n".join([f"- {g['name']}: Target ${g['targetAmount']}, Current ${g['currentAmount']}, Deadline {g['deadline']}" for g in goals])
+
     transaction_context = "\n".join([f"- {t['date']}: {t['merchant']} ({t['category']}) - ${t['amount']}" for t in transactions])
     
     # 3. Construct Hybrid Prompt
     system_prompt = (
-        "You are a helpful financial assistant. You have access to two types of information:\n"
-        "1. **Dashboard Data**: Structured transactions and goals (ALL transactions shown).\n"
-        "2. **Document Context**: Relevant text chunks retrieved from the uploaded bank statements (PDFs).\n\n"
-        "**Financial Summary (Calculated from Dashboard Data):**\n"
+        "You are a helpful financial assistant. You have access to comprehensive dashboard data:\n"
+        "1. **Dashboard Data**: Transactions, Budgets, and Goals.\n"
+        "2. **Document Context**: Relevant text chunks retrieved from uploaded bank statements.\n\n"
+        "**Financial Summary (Calculated):**\n"
         f"- **Total Income**: ${total_income:.2f}\n"
         f"- **Total Expense**: ${total_expense:.2f}\n"
-        "- **Spending by Category**:\n"
+        "- **Spending by Category (All Time)**:\n"
         f"{category_summary}\n\n"
-        "Use BOTH sources to answer.\n"
-        "- If the user asks about specific numbers/totals, prioritize the Dashboard Data and the Pre-calculated Summary above.\n"
-        "- If the user asks about address, terms, or specific text details, use the Document Context.\n\n"
+        "**Monthly Breakdown (Use this for temporal questions like 'How much did I spend in June?'):**\n"
+        f"{monthly_breakdown_str}\n\n"
+        "**Active Budgets:**\n"
+        f"{budget_context}\n\n"
+        "**Financial Goals:**\n"
+        f"{goal_context}\n\n"
+        "Use ALL sources to answer. Be accurate with numbers.\n"
+        "- If the user asks about specific months, look at the 'Monthly Breakdown'.\n"
+        "- If the user asks about budgets or goals, use the respective sections.\n"
+        "- If the user asks about specific transactions, refer to the raw list.\n\n"
         "Supported Actions:\n"
         "1. **Move Budget**: If the user wants to move money between categories.\n"
         "2. **Create Goal**: If the user wants to save for something.\n\n"
@@ -297,7 +344,7 @@ def chat_with_data(query: str, transactions: List[dict], api_key: str, base_url:
 --- Document Context (from PDF) ---
 {retrieved_context}
 
---- Dashboard Data (Transactions) ---
+--- Raw Transactions ---
 {transaction_context}
 """
 
@@ -413,3 +460,53 @@ def generate_savings_scenario(transactions: List[dict], goals: List[dict], extra
             "impact_description": "Could not generate simulation. Please try again.",
             "trade_off_suggestion": "Check your connection."
         }
+
+def classify_transactions_with_llm(descriptions: List[str], api_key: str, base_url: str = "https://api.openai.com/v1") -> List[str]:
+    """
+    Classifies a list of transaction descriptions using the LLM.
+    Returns a list of categories corresponding to the input descriptions.
+    """
+    if not descriptions:
+        return []
+
+    try:
+        llm = get_llm(api_key, base_url, temperature=0)
+        
+        # Batch descriptions to avoid token limits (though for this app volume is likely low)
+        # For simplicity, we'll send all at once if < 50, otherwise chunking might be needed.
+        # Assuming reasonable batch size from caller.
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert transaction classifier. Classify the following transaction descriptions into one of these categories:
+- Subscriptions
+- Transportation
+- Travel & Vacations
+- Credit Card Payments
+- Income
+- Groceries
+- Dining
+- Shopping
+- Bills
+- Others
+
+Use your knowledge of US merchants and brands.
+Return a list of categories in the exact same order as the input descriptions.
+If you are unsure, use 'Others'."""),
+            ("user", "Classify these:\n" + "\n".join([f"- {d}" for d in descriptions]))
+        ])
+
+        chain = prompt | llm.with_structured_output(CategoryList)
+        result = chain.invoke({})
+        
+        # Ensure we return exactly one category per description
+        categories = result.categories
+        
+        # Pad or truncate if length mismatch (shouldn't happen with structured output but safety first)
+        if len(categories) < len(descriptions):
+            categories.extend(["Others"] * (len(descriptions) - len(categories)))
+        return categories[:len(descriptions)]
+
+    except Exception as e:
+        print(f"Error in classify_transactions_with_llm: {e}")
+        # Fallback to 'Others' or None to let caller handle
+        return ["Others"] * len(descriptions)

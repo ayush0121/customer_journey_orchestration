@@ -6,6 +6,7 @@ export interface Transaction {
     category: string;
     type: 'income' | 'expense';
     isRecurring: boolean;
+    description: string;
     originalDescription: string; // For "dirty" data simulation
 }
 
@@ -68,6 +69,7 @@ export interface AppState {
     fetchGoals: () => Promise<void>;
     fetchAnomalies: () => Promise<void>;
     clearData: () => Promise<void>;
+    updateTransactionCategory: (id: string, newCategory: string) => Promise<void>;
 }
 
 export interface FinancialInsight {

@@ -3,11 +3,17 @@ import type { Transaction, Budget, Goal } from '../types';
 // --- Data Cleaning Logic ---
 
 const CATEGORY_RULES: Record<string, string[]> = {
-    'Groceries': ['WHOLEFDS', 'TRADER JOES', 'SAFEWAY', 'KROGER', 'MARKET'],
-    'Transport': ['UBER', 'LYFT', 'SHELL', 'CHEVRON', 'BP', 'EXXON'],
-    'Entertainment': ['NETFLIX', 'SPOTIFY', 'HULU', 'DISNEY', 'CINEMA', 'TICKET'],
-    'Dining': ['STARBUCKS', 'MCDONALDS', 'BURGER', 'RESTAURANT', 'CAFE', 'DOORDASH'],
-    'Shopping': ['AMZN', 'AMAZON', 'TARGET', 'WALMART', 'APPLE', 'NIKE']
+    'Subscriptions': ['MEMBERSHIP', 'ANNUAL FEE', 'SUBSCRIPTION', 'MEMBER','NETFLIX', 'HULU', 'DISNEY+', 'HBO', 'HBO MAX', 'PRIME VIDEO','SPOTIFY', 'APPLE MUSIC', 'AMAZON MUSIC', 'TIDAL','MEMBERSHIP', 'ANNUAL FEE', 'SUBSCRIPTION', 'MEMBER','MICROSOFT', 'ADOBE', 'JETBRAINS', 'ATLASSIAN', 'ATLASIAN', 'SOFTWARE', 'GITHUB', 'NOTION', 'SLACK', 'TRELLO', 'ASAANA', 'ASANA','DROPBOX', 'GOOGLE DRIVE', 'GOOGLEDRIVE', 'ONE DRIVE', 'ONE-DRIVE', 'ONEDRIVE', 'ICLOUD', 'CLOUD STORAGE', 'GOOGLE ONE'],
+            'Transportation': ['UBER', 'LYFT', 'SHELL', 'CHEVRON', 'BP', 'AMTRAK', 'METRO', 'TAXI', 'TOLL', 'TRANSPORT'],
+            'Travel & Vacations': ['AIRBNB', 'EXPEDIA', 'DELTA', 'UNITED', 'SOUTHWEST', 'HOTEL', 'BOOKING.COM', 'BOOKING', 'TRAVEL', 'AIRLINE', 'AVION', 'MAKING TRAVEL', 'HOTELS.COM'],
+            'Credit Card Payments': ['CARD PAYMENT', 'CREDIT CARD PAYMENT', 'AMEX PAYMENT', 'VISA PAYMENT', 'MASTERCARD PAYMENT', 'CC PAYMENT'],
+            'Income': ['SALARY', 'PAYCHECK', 'DEPOSIT', 'INCOME', 'DIVIDEND', 'INTEREST', 'REFUND', 'REIMBURSEMENT'],
+            'Others': ['PHARMACY', 'CVS', 'WALGREENS', 'KAISER', 'HOSPITAL', 'CLINIC', 'DOCTOR', 'MEDICINE','VANGUARD', 'SCHWAB', 'FIDELITY', 'ROBINHOOD', 'MUTUAL FUND', 'ETF', 'SIP', 'INVEST', 'BROKERAGE', 'ZERODHA', 'UPSTOX','LOAN PAYMENT', 'EMI', 'HOME LOAN', 'AUTO LOAN', 'PERSONAL LOAN', 'LOAN','TAX', 'IRS', 'HMRC', 'TDS', 'PAYROLL TAX', 'INCOME TAX','INSURANCE', 'PREMIUM', 'GEICO', 'AETNA', 'BLUE CROSS', 'PRUDENTIAL', 'HDFC ERGO', 'LIC','GYM', 'CLASSPASS', 'FITBIT', 'YOGA', 'PILATES', 'PERSONAL TRAI','DAYCARE', 'NANNY', 'SITTER', 'PRESCHOOL', 'CHILDCARE','VET', 'PETCO', 'PETSMART', 'PET', 'ANIMAL', 'GROOMING','EDU', 'COURSE', 'UDEMY', 'COURSERA', 'SCHOOL', 'UNIVERSITY', 'COLLEGE', 'TUITION', 'LEARNING', 'BOOTCAMP', 'K12'],
+            'Groceries': ['WHOLEFOODS', 'WHOLEFDS', 'TRADER JOE', 'TRADER JOES', 'SAFEWAY', 'KROGER', 'ALDI', 'COSTCO', 'WALMART', 'PUBLIX', 'SPROUTS', 'GROCERY', 'SUPERMARKET', 'MARKET', 'BIG BASKET', 'GROCER', 'INSTA MART'],
+            'Dining': ['STARBUCKS', 'MCDONALD', 'MCDONALDS', 'MCD', 'BURGER', 'PIZZA', 'PIZZA HUT', 'DOMINOS', 'PAPA JOHN', 'RESTAURANT', 'CAFE', 'DOORDASH', 'UBEREATS', 'GRUBHUB', 'ZOMATO', 'SWIGGY', 'DINING', 'FOOD', 'DINING OUT', 'DINING-OUT'],
+            'Shopping': ['AMZN', 'AMAZON', 'TARGET', 'WALMART', 'BEST BUY', 'EBAY', 'TJMAXX', 'IKEA', 'SEPHORA', 'SHOP', 'MALL', 'FLIPKART'],
+            'Bills': ['RENT','ELECTRIC', 'WATER', 'GAS', 'UTILITY', 'PG&E', 'PGE', 'CON EDISON', 'CONED', 'SCE', 'DOMINION', 'WATER BILL', 'ELECTRICITY', 'TELECOM', 'INTERNET', 'BILL']
+        
 };
 
 export const cleanTransactions = (rawLines: string[]): Transaction[] => {
@@ -45,6 +51,7 @@ export const cleanTransactions = (rawLines: string[]): Transaction[] => {
             category: category,
             type: 'expense', // Default to expense for sample data
             isRecurring: isRecurring,
+            description: merchant, // Use merchant as description
             originalDescription: line
         };
     });

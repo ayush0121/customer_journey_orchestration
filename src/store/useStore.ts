@@ -166,6 +166,29 @@ export const useStore = create<AppState>()(
                 } catch (error) {
                     console.error("Failed to clear data", error);
                 }
+            },
+
+            updateTransactionCategory: async (id, newCategory) => {
+                // Optimistic update
+                set((state) => ({
+                    transactions: state.transactions.map(t =>
+                        t.id === id ? { ...t, category: newCategory } : t
+                    )
+                }));
+
+                try {
+                    const response = await fetch(`http://localhost:8000/transactions/${id}/category`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ category: newCategory })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to update category');
+                    }
+                } catch (error) {
+                    console.error("Failed to update transaction category", error);
+                }
             }
         }),
         {

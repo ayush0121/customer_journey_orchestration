@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import type { FinancialInsight } from '../types';
+import { TransactionList } from './TransactionList';
 import { ArrowUpRight, ArrowDownRight, Wallet, CreditCard, PiggyBank, DollarSign, Activity, TrendingUp, Calendar, Download, ChevronDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Legend } from 'recharts';
 import { startOfMonth, endOfMonth, subMonths, isWithinInterval, parseISO, format, eachMonthOfInterval, isSameMonth, compareDesc, min, max } from 'date-fns';
@@ -486,6 +487,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                         ))}
                 </div>
             </div>
+
+            {/* Transaction Record */}
+            <TransactionList />
         </div>
     );
 };

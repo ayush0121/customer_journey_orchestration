@@ -9,6 +9,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Transport',
         type: 'expense',
         isRecurring: false,
+        description: 'Uber Ride',
         originalDescription: 'UBER *TRIP 291'
     },
     {
@@ -19,6 +20,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Entertainment',
         type: 'expense',
         isRecurring: true,
+        description: 'Netflix Subscription',
         originalDescription: 'NETFLIX.COM PALI'
     },
     {
@@ -29,6 +31,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Groceries',
         type: 'expense',
         isRecurring: false,
+        description: 'Whole Foods Market',
         originalDescription: 'WHOLEFDS 1234'
     },
     {
@@ -39,6 +42,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Dining',
         type: 'expense',
         isRecurring: false,
+        description: 'Starbucks Coffee',
         originalDescription: 'STARBUCKS STORE 001'
     },
     {
@@ -49,6 +53,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Entertainment',
         type: 'expense',
         isRecurring: true,
+        description: 'Spotify Premium',
         originalDescription: 'SPOTIFY USA'
     },
     {
@@ -59,6 +64,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Shopping',
         type: 'expense',
         isRecurring: false,
+        description: 'Apple Store Purchase',
         originalDescription: 'APPLE STORE R023'
     },
     {
@@ -69,6 +75,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Transport',
         type: 'expense',
         isRecurring: false,
+        description: 'Shell Gas Station',
         originalDescription: 'SHELL OIL 555'
     },
     {
@@ -79,6 +86,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Groceries',
         type: 'expense',
         isRecurring: false,
+        description: 'Trader Joes Groceries',
         originalDescription: 'TRADER JOES #123'
     },
     {
@@ -89,6 +97,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
         category: 'Income',
         type: 'income',
         isRecurring: true,
+        description: 'Salary Payment',
         originalDescription: 'DIRECT DEP TECH CORP'
     }
 ];
